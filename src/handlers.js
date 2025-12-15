@@ -360,7 +360,8 @@ export class BotHandlers {
       return await this.sendMenu(from);
     }
 
-    // Se NÃO for clique em botão e o texto não corresponder exatamente a comandos conhecidos, ignora silenciosamente
+    // Se NÃO for clique em botão e o texto não corresponder exatamente a comandos conhecidos,
+    // ignora silenciosamente (comportamento original: só responde para saudações e comandos conhecidos)
     if (!isButtonClick && text) {
       // Lista de comandos permitidos por texto (apenas comandos básicos)
       const allowedTextCommands = [

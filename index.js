@@ -87,7 +87,12 @@ app.post('/webhook', async (req, res) => {
       // Ignora mensagens enviadas por nós mesmos
       if (msg.fromMe === false && !msg.wasSentByApi) {
         // Extrai o número do sender (formato: 557591121519@s.whatsapp.net)
-        const senderNumber = msg.sender || msg.chatid || msg.sender_pn || '';
+        // Prioriza sender_pn ou chatid (números reais) sobre sender (que pode ser @lid em contas business)
+        let senderNumber = msg.sender_pn || msg.chatid || msg.sender || '';
+        // Se sender terminar com @lid (business), usa sender_pn ou chatid em vez disso
+        if (senderNumber && senderNumber.endsWith('@lid')) {
+          senderNumber = msg.sender_pn || msg.chatid || '';
+        }
         
         // Para botões interativos, prioriza buttonOrListid sobre text/content
         let messageText = '';
