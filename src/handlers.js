@@ -306,10 +306,22 @@ export class BotHandlers {
   async handleMessage(message) {
     // Extrai o número de origem de diferentes formatos possíveis
     let fromRaw = message.from || message.key?.remoteJid || message.fromNumber || message.number || message.sender || message.chatid || message.sender_pn;
-    
-    // Se o número vem no formato WhatsApp (ex: 557591121519@s.whatsapp.net), extrai apenas os números
-    if (fromRaw && typeof fromRaw === 'string' && fromRaw.includes('@')) {
-      fromRaw = fromRaw.split('@')[0];
+
+    // Aceita mensagens de contatos (@s.whatsapp.net) e contas empresariais (@lid)
+    // Ignora APENAS grupos (@g.us)
+    if (fromRaw && typeof fromRaw === 'string') {
+      const fromString = String(fromRaw);
+
+      // Se for grupo, nem processa
+      if (fromString.includes('@g.us')) {
+        return;
+      }
+
+      // Se o número vem no formato WhatsApp (ex: 557591121519@s.whatsapp.net ou 557591121519@lid),
+      // extrai apenas os números antes do @
+      if (fromString.includes('@')) {
+        fromRaw = fromString.split('@')[0];
+      }
     }
     
     const from = this.normalizePhone(fromRaw);
