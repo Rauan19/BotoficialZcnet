@@ -478,7 +478,7 @@ export class BotHandlers {
       text: 'Olá! Como posso ajudá-lo hoje?\n\nEscolha uma opção:',
       footerText: 'ZC NET - Seu provedor de internet',
       choices: [
-        '💳 Pagamento|fatura',
+        'Pagamento|fatura',
         '🔧 Suporte Técnico|suporte',
         '👤 Falar com Atendente|atendente',
         '📦 Nossos Planos|planos'
@@ -498,7 +498,7 @@ export class BotHandlers {
 
 Digite o *número* da opção desejada:
 
-*1* ou *fatura* - 💳 Pagamento
+*1* ou *fatura* - Pagamento
 *2* ou *suporte* - 🔧 Suporte Técnico
 *3* ou *atendente* - 👤 Falar com Atendente
 *4* ou *planos* - 📦 Nossos Planos
@@ -521,7 +521,7 @@ _Digite MENU a qualquer momento para voltar_`;
       choices: [
         '🐌 Internet Lenta|internet_lenta',
         '📵 Sem Conexão|sem_conexao',
-        '💳 Já Paguei|ja_paguei',
+        'Já Paguei|ja_paguei',
         'Voltar ao Menu|menu'
       ],
       readchat: false,
@@ -541,7 +541,7 @@ Qual problema você está enfrentando?
 
 *1* - 🐌 Internet Lenta
 *2* - 📵 Sem Conexão
-*3* - 💳 Já Paguei
+*3* - Já Paguei
 *0* - Voltar ao Menu`;
 
       await this.uazapi.sendText(number, menuTexto);
@@ -633,7 +633,7 @@ Se não voltou sua conexão:
   async handleJaPaguei(number, message) {
     const menuData = {
       type: 'button',
-      text: '💳 *Já Paguei*\n\nSe você já realizou o pagamento, reinicie os equipamentos e espere 4 minutos.\n\nSe não voltar sua conexão:',
+      text: '*Já Paguei*\n\nSe você já realizou o pagamento, reinicie os equipamentos e espere 4 minutos.\n\nSe não voltar sua conexão:',
       footerText: 'ZC NET',
       choices: [
         '👤 Falar com Atendente|atendente',
@@ -650,7 +650,7 @@ Se não voltou sua conexão:
       return result;
     } catch (error) {
       // Fallback para texto
-      const menuTexto = `💳 *Já Paguei*
+      const menuTexto = `*Já Paguei*
 
 Se você já realizou o pagamento, reinicie os equipamentos e espere 4 minutos.
 
@@ -971,7 +971,7 @@ Digite apenas os números do CPF (11 dígitos):`;
           ? new Date(dataVencimento).toLocaleDateString('pt-BR')
           : 'Data não informada';
         
-        menuData.choices.push(`💳 R$ ${valorFormatado} - Venc: ${vencimento}|cobranca_${index}`);
+        menuData.choices.push(`R$ ${valorFormatado} - Venc: ${vencimento}|cobranca_${index}`);
       });
 
       menuData.choices.push('Voltar ao Menu|menu');
@@ -991,7 +991,7 @@ Digite apenas os números do CPF (11 dígitos):`;
           const vencimento = dataVencimento 
             ? new Date(dataVencimento).toLocaleDateString('pt-BR')
             : 'Data não informada';
-          texto += `*${index + 1}* - 💳 Pagar R$ ${valorFormatado} - Venc: ${vencimento}\n`;
+          texto += `*${index + 1}* - Pagar R$ ${valorFormatado} - Venc: ${vencimento}\n`;
         });
         texto += `*0* - Voltar ao Menu`;
         
@@ -1052,7 +1052,7 @@ Digite apenas os números do CPF (11 dígitos):`;
       
       const nomeCliente = state.nomeCliente || 'Cliente';
 
-      let mensagem = `💳 *Pagamento*\n\n`;
+      let mensagem = `*Pagamento*\n\n`;
       mensagem += `👤 *Cliente:* ${nomeCliente}\n`;
       mensagem += `*Cobrança:* ${cobranca.descricao || cobranca.descricaoServico || 'Cobrança'}\n`;
       mensagem += `*Valor:* R$ ${valorFormatado}\n`;
@@ -1093,7 +1093,7 @@ Digite apenas os números do CPF (11 dígitos):`;
                         });
       
       if (temPix) {
-        menuData.choices.push('💳 Pagar com PIX|pix');
+        menuData.choices.push('Pagar com PIX|pix');
       }
       if (temBoleto) {
         menuData.choices.push('📄 Gerar Boleto|boleto');
@@ -1101,7 +1101,7 @@ Digite apenas os números do CPF (11 dígitos):`;
       
       // Se não encontrou nenhuma forma, oferece pelo menos PIX e BOLETO como padrão
       if (!temPix && !temBoleto) {
-        menuData.choices.push('💳 Pagar com PIX|pix');
+        menuData.choices.push('Pagar com PIX|pix');
         menuData.choices.push('📄 Gerar Boleto|boleto');
       }
       
@@ -1116,7 +1116,7 @@ Digite apenas os números do CPF (11 dígitos):`;
       } catch (error) {
         // Fallback
         let texto = mensagem + '\n\n';
-        texto += `*1* - 💳 Pagar com PIX\n`;
+        texto += `*1* - Pagar com PIX\n`;
         texto += `*2* - 📄 Gerar Boleto\n`;
         texto += `*0* - Voltar ao Menu`;
         await this.sendTextUnread(number, texto);
@@ -1183,7 +1183,7 @@ Digite apenas os números do CPF (11 dígitos):`;
             ? new Date(dataVencimento).toLocaleDateString('pt-BR')
             : 'Data não informada';
           
-          menuData.choices.push(`💳 R$ ${valorFormatado} - Venc: ${vencimento}|cobranca_${index}`);
+          menuData.choices.push(`R$ ${valorFormatado} - Venc: ${vencimento}|cobranca_${index}`);
         });
         
         menuData.choices.push('Voltar ao Menu|menu');
@@ -1236,7 +1236,7 @@ Digite apenas os números do CPF (11 dígitos):`;
       if (qrCodeResult?.base64) {
         try {
           // Caption mais curta para o QR code
-          const caption = `💳 *PIX Gerado com Sucesso!*\n\n💰 *Valor:* R$ ${valorFormatado}\n\n📱 *Escaneie o QR code acima para efetuar o pagamento*`;
+          const caption = `*PIX Gerado com Sucesso!*\n\n💰 *Valor:* R$ ${valorFormatado}\n\n📱 *Escaneie o QR code acima para efetuar o pagamento*`;
           
           // 1. Envia QR code como imagem
           await this.uazapi.sendMedia(number, 'image', qrCodeResult.base64, caption);
