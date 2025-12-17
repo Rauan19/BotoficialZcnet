@@ -9,6 +9,20 @@ export class BotHandlers {
     this.ispbox = ispboxClient;
     // Armazena estado do fluxo de pagamento: { [number]: { etapa: 'cpf', cpf: '...', clienteId: '...', servicosId: '...', cobrancaId: '...' } }
     this.pagamentoState = new Map();
+    // Armazena números que tiveram CPF não encontrado - para evitar que o bot continue insistindo
+    // { [number]: timestamp } - expira após 1 hora
+    this.cpfNaoEncontrado = new Map();
+    
+    // Limpa entradas antigas de CPF não encontrado periodicamente (a cada 30 minutos)
+    setInterval(() => {
+      const agora = Date.now();
+      const umaHora = 60 * 60 * 1000; // 1 hora em milissegundos
+      for (const [number, timestamp] of this.cpfNaoEncontrado.entries()) {
+        if (agora - timestamp > umaHora) {
+          this.cpfNaoEncontrado.delete(number);
+        }
+      }
+    }, 30 * 60 * 1000); // Executa a cada 30 minutos
   }
 
   /**
@@ -345,12 +359,43 @@ export class BotHandlers {
     
     // Verifica se está aguardando CPF no fluxo de pagamento (permite texto livre para CPF)
     if (!isButtonClick && this.pagamentoState.has(from) && this.pagamentoState.get(from).etapa === 'cpf') {
+      // Se o CPF já foi tentado e não encontrado recentemente, não processa mais como CPF
+      // (evita que o bot continue insistindo quando atendente humano já assumiu)
+      if (this.cpfNaoEncontrado.has(from)) {
+        const timestamp = this.cpfNaoEncontrado.get(from);
+        const umaHora = 60 * 60 * 1000; // 1 hora em milissegundos
+        // Se passou menos de 1 hora desde que CPF não foi encontrado, ignora mensagens que não sejam comandos explícitos
+        if (Date.now() - timestamp < umaHora) {
+          // Só processa se for um comando explícito (menu, atendente, etc)
+          const comandosExplicitos = ['menu', 'inicio', 'voltar ao menu', 'atendente', 'falar com atendente', 'atendimento'];
+          const isComandoExplicito = comandosExplicitos.some(cmd => text === cmd || text.startsWith(cmd + ' '));
+          if (!isComandoExplicito) {
+            // Ignora silenciosamente - não responde nada para não interferir com atendente humano
+            return;
+          }
+        } else {
+          // Passou mais de 1 hora, remove da lista e permite tentar novamente
+          this.cpfNaoEncontrado.delete(from);
+        }
+      }
+      
       // Valida e processa CPF
-      const cpf = text.replace(/\D/g, ''); // Remove formatação
+      let cpf = text.replace(/\D/g, ''); // Remove formatação
+      
+      // Garante que o CPF tenha exatamente 11 dígitos (preenche com zeros à esquerda se necessário)
+      // Isso ajuda quando o usuário digita CPF sem zeros à esquerda
+      if (cpf.length > 0 && cpf.length <= 11) {
+        cpf = cpf.padStart(11, '0');
+      }
+      
       if (cpf.length === 11) {
         return await this.processarCpfPagamento(from, cpf);
       } else {
-        await this.sendTextUnread(from, '❌ CPF inválido. Por favor, informe um CPF com 11 dígitos.');
+        // Só responde "CPF inválido" se não estiver na lista de CPF não encontrado
+        // (evita insistir quando atendente já assumiu)
+        if (!this.cpfNaoEncontrado.has(from)) {
+          await this.sendTextUnread(from, '❌ CPF inválido. Por favor, informe um CPF com 11 dígitos.');
+        }
         return;
       }
     }
@@ -834,6 +879,9 @@ Escolha o plano ideal para você! 👇`;
       return await this.sendVoltarMenu(number);
     }
 
+    // Remove flag de CPF não encontrado se existir (permite tentar novamente)
+    this.cpfNaoEncontrado.delete(number);
+    
     // Inicia fluxo de pagamento solicitando CPF
     this.pagamentoState.set(number, { etapa: 'cpf' });
     
@@ -862,8 +910,13 @@ Digite apenas os números do CPF (11 dígitos):`;
       if (!cliente) {
         await this.sendTextUnread(number, '❌ Cliente não encontrado com este CPF.\n\nPor favor, verifique o CPF informado ou entre em contato com nosso atendimento.');
         this.pagamentoState.delete(number);
+        // Marca que o CPF não foi encontrado para este número (evita que o bot continue insistindo)
+        this.cpfNaoEncontrado.set(number, Date.now());
         return await this.sendVoltarMenu(number);
       }
+      
+      // Se encontrou o cliente, remove da lista de CPF não encontrado (caso tenha estado lá antes)
+      this.cpfNaoEncontrado.delete(number);
 
 
       // Busca serviços do cliente

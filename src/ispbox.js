@@ -66,6 +66,7 @@ export class IspboxClient {
 
   /**
    * Busca cliente por CPF
+   * Tenta diferentes variações do CPF para lidar com zeros à esquerda
    */
   async buscarClientePorCpf(cpf) {
     try {
@@ -73,51 +74,100 @@ export class IspboxClient {
       const requestId = 'ispbox';
       
       // Remove formatação do CPF
-      const cpfLimpo = cpf.replace(/\D/g, '');
+      let cpfLimpo = cpf.replace(/\D/g, '');
+
+      // Garante que o CPF tenha exatamente 11 dígitos (preenche com zeros à esquerda se necessário)
+      if (cpfLimpo.length < 11) {
+        cpfLimpo = cpfLimpo.padStart(11, '0');
+      }
 
       if (cpfLimpo.length !== 11) {
         throw new Error('CPF deve ter 11 dígitos');
       }
 
-      const response = await axios.get(
-        `${this.baseUrl}/api/v2/clientes`,
-        {
-          headers: {
-            'X-Request-ID': requestId,
-            'Authorization': `Bearer ${token}`
-          },
-          params: {
-            pesquisa: cpfLimpo
+      // Função auxiliar para buscar cliente com um CPF específico
+      const buscarComCpf = async (cpfParaBuscar) => {
+        const response = await axios.get(
+          `${this.baseUrl}/api/v2/clientes`,
+          {
+            headers: {
+              'X-Request-ID': requestId,
+              'Authorization': `Bearer ${token}`
+            },
+            params: {
+              pesquisa: cpfParaBuscar
+            }
+          }
+        );
+
+        // Verifica se há erro na resposta
+        if (response.data && response.data.status === 'error') {
+          return null;
+        }
+
+        // Os dados podem estar em response.data.data (array) ou response.data (array direto)
+        let clientes = [];
+        if (response.data && response.data.data && Array.isArray(response.data.data)) {
+          clientes = response.data.data;
+        } else if (Array.isArray(response.data)) {
+          clientes = response.data;
+        } else if (response.data && response.data.data && !Array.isArray(response.data.data)) {
+          // Caso especial: pode vir como objeto único
+          clientes = [response.data.data];
+        }
+        
+        if (clientes.length === 0) {
+          return null;
+        }
+
+        // Retorna o primeiro cliente encontrado
+        return clientes[0];
+      };
+
+      // TENTATIVA 1: Busca com o CPF exatamente como foi informado
+      let cliente = await buscarComCpf(cpfLimpo);
+      if (cliente) {
+        return cliente;
+      }
+
+      // TENTATIVA 2: Busca parcial - tenta com os últimos 10 dígitos (remove primeiro)
+      // Isso ajuda quando há diferença no primeiro dígito
+      // Exemplo: cliente digita "12345678901", na base pode estar "01234567890"
+      // Buscar "2345678901" pode encontrar ambos
+      if (cpfLimpo.length === 11) {
+        const cpfUltimos10 = cpfLimpo.substring(1);
+        cliente = await buscarComCpf(cpfUltimos10);
+        if (cliente) {
+          return cliente;
+        }
+      }
+
+      // TENTATIVA 3: Se o CPF começa com zero, tenta SEM zero à esquerda (busca parcial)
+      // Exemplo: cliente digita "01234567890" -> tenta buscar "1234567890" (10 dígitos)
+      // Isso ajuda quando na base está salvo sem o zero à esquerda
+      if (cpfLimpo.startsWith('0') && cpfLimpo.length === 11) {
+        const cpfSemZeroEsquerda = cpfLimpo.replace(/^0+/, '');
+        // Só tenta se ficou com pelo menos 10 dígitos
+        if (cpfSemZeroEsquerda.length >= 10) {
+          cliente = await buscarComCpf(cpfSemZeroEsquerda);
+          if (cliente) {
+            return cliente;
           }
         }
-      );
-
-      // Verifica se há erro na resposta
-      if (response.data && response.data.status === 'error') {
-        throw new Error(response.data.message || 'Erro ao buscar cliente');
       }
 
-      // Os dados podem estar em response.data.data (array) ou response.data (array direto)
-      // A documentação indica que response.data é um array
-      let clientes = [];
-      if (response.data && response.data.data && Array.isArray(response.data.data)) {
-        clientes = response.data.data;
-      } else if (Array.isArray(response.data)) {
-        clientes = response.data;
-      } else if (response.data && response.data.data && !Array.isArray(response.data.data)) {
-        // Caso especial: pode vir como objeto único
-        clientes = [response.data.data];
-      }
-      
-      if (clientes.length === 0) {
-        return null;
+      // TENTATIVA 4: Busca parcial - tenta com os últimos 9 dígitos
+      // Para casos onde há diferença nos dois primeiros dígitos
+      if (cpfLimpo.length === 11) {
+        const cpfUltimos9 = cpfLimpo.substring(2);
+        cliente = await buscarComCpf(cpfUltimos9);
+        if (cliente) {
+          return cliente;
+        }
       }
 
-      // Usa o primeiro cliente retornado (a API já filtra por CPF)
-      // response.data.data[0] é o cliente correto
-      const cliente = clientes[0];
-      
-      return cliente;
+      // Se nenhuma tentativa funcionou, retorna null
+      return null;
     } catch (error) {
       if (error.response?.status === 401) {
         throw new Error('Token de autenticação inválido. Verifique as credenciais.');
