@@ -357,46 +357,93 @@ export class BotHandlers {
     const messageType = message.type || message.messageType;
 
     
-    // Verifica se está aguardando CPF no fluxo de pagamento (permite texto livre para CPF)
+    // Verifica se está aguardando CPF no fluxo de pagamento
     if (!isButtonClick && this.pagamentoState.has(from) && this.pagamentoState.get(from).etapa === 'cpf') {
-      // Se o CPF já foi tentado e não encontrado recentemente, não processa mais como CPF
-      // (evita que o bot continue insistindo quando atendente humano já assumiu)
-      if (this.cpfNaoEncontrado.has(from)) {
-        const timestamp = this.cpfNaoEncontrado.get(from);
-        const umaHora = 60 * 60 * 1000; // 1 hora em milissegundos
-        // Se passou menos de 1 hora desde que CPF não foi encontrado, ignora mensagens que não sejam comandos explícitos
-        if (Date.now() - timestamp < umaHora) {
-          // Só processa se for um comando explícito (menu, atendente, etc)
-          const comandosExplicitos = ['menu', 'inicio', 'voltar ao menu', 'atendente', 'falar com atendente', 'atendimento'];
-          const isComandoExplicito = comandosExplicitos.some(cmd => text === cmd || text.startsWith(cmd + ' '));
-          if (!isComandoExplicito) {
-            // Ignora silenciosamente - não responde nada para não interferir com atendente humano
-            return;
-          }
-        } else {
-          // Passou mais de 1 hora, remove da lista e permite tentar novamente
-          this.cpfNaoEncontrado.delete(from);
-        }
-      }
+      const state = this.pagamentoState.get(from);
       
-      // Valida e processa CPF
-      let cpf = text.replace(/\D/g, ''); // Remove formatação
+      // Lista de comandos que cancelam o fluxo de CPF (cliente mudou de assunto)
+      const comandosQueCancelamCpf = [
+        'menu', 'inicio', 'voltar ao menu',
+        'atendente', 'falar com atendente', 'atendimento',
+        'suporte', 'suporte técnico', 'suporte tecnico', 'abrir chamado', 'chamado',
+        'fatura', 'boleto', 'pagamento',
+        'planos', 'nossos planos', 'planos disponíveis', 'preços'
+      ];
       
-      // Garante que o CPF tenha exatamente 11 dígitos (preenche com zeros à esquerda se necessário)
-      // Isso ajuda quando o usuário digita CPF sem zeros à esquerda
-      if (cpf.length > 0 && cpf.length <= 11) {
-        cpf = cpf.padStart(11, '0');
-      }
+      // Verifica se a mensagem é um comando que cancela o fluxo de CPF
+      const isComandoQueCancela = comandosQueCancelamCpf.some(cmd => {
+        const textLower = text.toLowerCase().trim();
+        return textLower === cmd || textLower.startsWith(cmd + ' ');
+      });
       
-      if (cpf.length === 11) {
-        return await this.processarCpfPagamento(from, cpf);
+      // Se for uma saudação, também cancela o fluxo de CPF
+      const isSaudacao = this.detectarSaudacao(text);
+      
+      // REGRA 7: Se o cliente mudou de assunto (comando ou saudação), mantém estado sem insistir
+      if (isComandoQueCancela || isSaudacao) {
+        this.pagamentoState.delete(from);
+        this.cpfNaoEncontrado.delete(from);
+        // Continua processando o comando normalmente (não retorna aqui)
       } else {
-        // Só responde "CPF inválido" se não estiver na lista de CPF não encontrado
-        // (evita insistir quando atendente já assumiu)
-        if (!this.cpfNaoEncontrado.has(from)) {
-          await this.sendTextUnread(from, '❌ CPF inválido. Por favor, informe um CPF com 11 dígitos.');
+        // REGRA 1: O bot SÓ deve responder se a mensagem parecer um CPF (11 dígitos)
+        // Extrai apenas números da mensagem
+        let cpf = text.replace(/\D/g, '');
+        
+        // Se não tem números ou tem muitos caracteres não numéricos, não é CPF
+        const caracteresNaoNumericos = text.replace(/\d/g, '').trim().length;
+        const temApenasNumeros = cpf.length > 0 && caracteresNaoNumericos <= 2; // Permite até 2 caracteres não numéricos (pontos, traços)
+        
+        // REGRA 2: Se NÃO parecer CPF, o bot NÃO responde nada
+        if (!temApenasNumeros || cpf.length === 0) {
+          // Ignora silenciosamente - cliente provavelmente mudou de assunto
+          return;
         }
-        return;
+        
+        // Garante que o CPF tenha exatamente 11 dígitos (preenche com zeros à esquerda se necessário)
+        if (cpf.length > 0 && cpf.length <= 11) {
+          cpf = cpf.padStart(11, '0');
+        }
+        
+        // Verifica se tem exatamente 11 dígitos
+        if (cpf.length !== 11) {
+          // CPF malformado - REGRA 3: responder apenas UMA vez "CPF inválido"
+          if (!state.erroCpfFormato) {
+            state.erroCpfFormato = true;
+            state.ultimoCpfTentado = null; // Reset último CPF
+            this.pagamentoState.set(from, state);
+            await this.sendTextUnread(from, '❌ CPF inválido. Por favor, informe um CPF com 11 dígitos.');
+          }
+          // Se já deu erro de formato, não responde novamente
+          return;
+        }
+        
+        // REGRA 6: Se o cliente enviar um CPF diferente, resetar os erros e reprocessar
+        if (state.ultimoCpfTentado && state.ultimoCpfTentado !== cpf) {
+          // CPF diferente do anterior - reseta flags de erro
+          state.erroCpfFormato = false;
+          state.erroCpfNaoEncontrado = false;
+          state.ultimoCpfTentado = cpf;
+          this.pagamentoState.set(from, state);
+          // Processa o novo CPF
+          return await this.processarCpfPagamento(from, cpf);
+        }
+        
+        // Se é o mesmo CPF que já deu erro, não processa novamente
+        if (state.erroCpfNaoEncontrado && state.ultimoCpfTentado === cpf) {
+          // Já deu erro para este CPF - não responde novamente
+          return;
+        }
+        
+        // Se é o mesmo CPF que já deu erro de formato, não processa novamente
+        if (state.erroCpfFormato && state.ultimoCpfTentado === cpf) {
+          // Já deu erro de formato para este CPF - não responde novamente
+          return;
+        }
+        
+        // CPF válido (11 dígitos) - processa
+        state.ultimoCpfTentado = cpf;
+        this.pagamentoState.set(from, state);
+        return await this.processarCpfPagamento(from, cpf);
       }
     }
 
@@ -882,8 +929,13 @@ Escolha o plano ideal para você! 👇`;
     // Remove flag de CPF não encontrado se existir (permite tentar novamente)
     this.cpfNaoEncontrado.delete(number);
     
-    // Inicia fluxo de pagamento solicitando CPF
-    this.pagamentoState.set(number, { etapa: 'cpf' });
+    // Inicia fluxo de pagamento solicitando CPF com flags de controle de erro
+    this.pagamentoState.set(number, { 
+      etapa: 'cpf',
+      erroCpfFormato: false,
+      erroCpfNaoEncontrado: false,
+      ultimoCpfTentado: null
+    });
     
     const response = `Me informe seu CPF para consultar o pagamento.
 
@@ -903,19 +955,36 @@ Digite apenas os números do CPF (11 dígitos):`;
         return await this.sendVoltarMenu(number);
       }
 
+      const state = this.pagamentoState.get(number);
+      if (!state) {
+        return; // Estado foi removido, não processa
+      }
+
       await this.sendTextUnread(number, '🔍 Consultando informações...');
 
       const cliente = await this.ispbox.buscarClientePorCpf(cpf);
       
+      // REGRA 4: CPF válido mas não encontrado → responder apenas UMA vez "CPF não encontrado"
       if (!cliente) {
-        await this.sendTextUnread(number, '❌ Cliente não encontrado com este CPF.\n\nPor favor, verifique o CPF informado ou entre em contato com nosso atendimento.');
-        this.pagamentoState.delete(number);
-        // Marca que o CPF não foi encontrado para este número (evita que o bot continue insistindo)
-        this.cpfNaoEncontrado.set(number, Date.now());
+        // Marca flag de erro e atualiza estado
+        state.erroCpfNaoEncontrado = true;
+        state.erroCpfFormato = false; // Reset erro de formato
+        this.pagamentoState.set(number, state);
+        
+        // REGRA 5: Nunca repetir mensagens de erro (usar flags/lock no estado)
+        // Só envia mensagem se ainda não foi enviada para este CPF
+        if (!this.cpfNaoEncontrado.has(number) || this.cpfNaoEncontrado.get(number) !== cpf) {
+          await this.sendTextUnread(number, '❌ Cliente não encontrado com este CPF.\n\nPor favor, verifique o CPF informado ou entre em contato com nosso atendimento.');
+          this.cpfNaoEncontrado.set(number, cpf); // Armazena o CPF que não foi encontrado
+        }
+        // Mantém o estado para permitir que cliente tente outro CPF (REGRA 6)
         return await this.sendVoltarMenu(number);
       }
       
-      // Se encontrou o cliente, remove da lista de CPF não encontrado (caso tenha estado lá antes)
+      // REGRA 8: Ao encontrar CPF válido e existente, avançar o fluxo normalmente
+      // Se encontrou o cliente, reseta todas as flags de erro
+      state.erroCpfFormato = false;
+      state.erroCpfNaoEncontrado = false;
       this.cpfNaoEncontrado.delete(number);
 
 
