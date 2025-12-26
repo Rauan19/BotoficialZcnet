@@ -1043,6 +1043,23 @@ Digite apenas os números do CPF (11 dígitos):`;
         return await this.sendVoltarMenu(number);
       }
 
+      // Ordena cobranças pendentes por data de vencimento (mais antigas primeiro)
+      cobrancasPendentes.sort((a, b) => {
+        const dataVencA = a.dataVencimento || a.data_vencimento || a.vencimento;
+        const dataVencB = b.dataVencimento || b.data_vencimento || b.vencimento;
+        
+        // Se uma não tem data, coloca no final
+        if (!dataVencA && !dataVencB) return 0;
+        if (!dataVencA) return 1;
+        if (!dataVencB) return -1;
+        
+        // Converte para Date e compara
+        const dateA = new Date(dataVencA);
+        const dateB = new Date(dataVencB);
+        
+        return dateA.getTime() - dateB.getTime(); // Ordem crescente (mais antiga primeiro)
+      });
+
       // Salva estado e mostra cobranças (inclui nome do cliente e tipo do serviço no estado)
       const nomeCliente = cliente.nome || cliente.razaoSocial || 'Cliente';
       this.pagamentoState.set(number, {
