@@ -249,33 +249,74 @@ export class IspboxClient {
       const token = await this.getAccessToken();
       const requestId = 'ispbox';
 
-      // Primeiro tenta com tipoServico INTERNET
+      const url = `${this.baseUrl}/api/v2/clientes/${clientesId}/servicos/${servicosId}/cobrancas`;
+      
+      // Busca todas as páginas de cobranças
+      let todasCobrancas = [];
+      let paginaAtual = 1;
+      let totalPaginas = 1;
       let response;
       try {
-        response = await axios.get(
-          `${this.baseUrl}/api/v2/clientes/${clientesId}/servicos/${servicosId}/cobrancas`,
-          {
+        do {
+          const params = {
+            tipoServico: 'INTERNET',
+            pagina: paginaAtual,
+            limite: 100  // Tenta buscar mais por página
+          };
+          
+          response = await axios.get(url, {
             headers: {
               'X-Request-ID': requestId,
               'Authorization': `Bearer ${token}`
             },
-            params: {
-              tipoServico: 'INTERNET'
+            params: params
+          });
+          
+          // Extrai cobranças desta página
+          let cobrancasPagina = [];
+          if (response.data && response.data.data && Array.isArray(response.data.data)) {
+            cobrancasPagina = response.data.data;
+          } else if (Array.isArray(response.data)) {
+            cobrancasPagina = response.data;
+          }
+          
+          todasCobrancas = todasCobrancas.concat(cobrancasPagina);
+          
+          // Verifica informações de paginação no meta
+          if (response.data && response.data.meta) {
+            totalPaginas = response.data.meta.totalPaginas || 1;
+          }
+          
+          paginaAtual++;
+          
+          // Se não conseguir determinar total de páginas, para após a primeira página se não vier mais cobranças
+          if (cobrancasPagina.length === 0) {
+            break;
+          }
+          
+        } while (paginaAtual <= totalPaginas);
+        
+        // Cria uma resposta fake para manter compatibilidade com o código existente
+        response = {
+          data: {
+            data: todasCobrancas,
+            meta: {
+              total: todasCobrancas.length,
+              pagina: 1,
+              totalPaginas: 1,
+              limite: todasCobrancas.length
             }
           }
-        );
+        };
       } catch (error) {
-        // Se der erro, tenta sem o parâmetro tipoServico
-        response = await axios.get(
-          `${this.baseUrl}/api/v2/clientes/${clientesId}/servicos/${servicosId}/cobrancas`,
-          {
-            headers: {
-              'X-Request-ID': requestId,
-              'Authorization': `Bearer ${token}`
-            }
-            // Sem filtro de tipoServico
+        // Se der erro, tenta sem o parâmetro tipoServico (busca apenas primeira página)
+        response = await axios.get(url, {
+          headers: {
+            'X-Request-ID': requestId,
+            'Authorization': `Bearer ${token}`
           }
-        );
+          // Sem filtro de tipoServico
+        });
       }
 
       if (response.data && response.data.status === 'error') {

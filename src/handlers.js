@@ -1006,11 +1006,8 @@ Digite apenas os números do CPF (11 dígitos):`;
       // Busca cobranças pendentes
       const cobrancas = await this.ispbox.listarCobrancas(cliente.id, servico.id);
       
-      if (cobrancas && cobrancas.length > 0) {
-      }
-      
-      // Filtra apenas cobranças NÃO PAGAS conforme documentação
-      // Critério: dataPagamento === null OU dataPagamento === undefined OU dataPagamento === ''
+      // Filtra apenas cobranças NÃO PAGAS
+      // Critério único: dataPagamento === null (se for null, não foi paga)
       const cobrancasPendentes = cobrancas.filter(c => {
         if (!c || !c.id) {
           return false; // Ignora cobranças inválidas
@@ -1019,21 +1016,13 @@ Digite apenas os números do CPF (11 dígitos):`;
         // Verifica campo dataPagamento (pode vir em diferentes formatos)
         const dataPagamento = c.dataPagamento || c.data_pagamento;
         
-        // Se tem data de pagamento, está pago (exclui)
+        // Se dataPagamento for null/undefined/vazio, a cobrança NÃO foi paga (inclui na lista)
+        // Se dataPagamento tiver valor, a cobrança FOI paga (exclui da lista)
         if (dataPagamento !== null && dataPagamento !== undefined && dataPagamento !== '') {
-          return false;
+          return false; // Tem data de pagamento, está pago (exclui)
         }
 
-        // Verificação adicional: status indica pago?
-        const statusDescricao = (c.statusDescricao || c.status_descricao || c.status || '').toLowerCase();
-        if (statusDescricao.includes('pago') || 
-            statusDescricao.includes('quitado') || 
-            statusDescricao.includes('liquidado') || 
-            statusDescricao.includes('cancelado')) {
-          return false; // Status indica pago, exclui
-        }
-
-        // Se passou nas verificações, é não paga
+        // Se dataPagamento é null/undefined/vazio, não foi paga (inclui)
         return true;
       });
       
@@ -1083,7 +1072,28 @@ Digite apenas os números do CPF (11 dígitos):`;
           ? new Date(dataVencimento).toLocaleDateString('pt-BR')
           : 'Não informado';
         
-        const descricao = cob.descricao || cob.descricaoServico || 'Cobrança';
+        // Tenta criar descrição melhor usando tipo e referenciaMensalidade
+        let descricao = cob.descricao || cob.descricaoServico;
+        
+        // Se não tem descricao, tenta criar a partir de tipo e referenciaMensalidade
+        if (!descricao || descricao === 'N/A') {
+          const tipo = cob.tipo || '';
+          const referenciaMensalidade = cob.referenciaMensalidade;
+          
+          if (referenciaMensalidade) {
+            // Formata a data de referência para exibir o mês/ano
+            try {
+              const dataRef = new Date(referenciaMensalidade);
+              const mesAno = dataRef.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+              descricao = tipo ? `${tipo} - ${mesAno.charAt(0).toUpperCase() + mesAno.slice(1)}` : `Mensalidade - ${mesAno.charAt(0).toUpperCase() + mesAno.slice(1)}`;
+            } catch (e) {
+              descricao = tipo || 'Mensalidade';
+            }
+          } else {
+            descricao = tipo || 'Cobrança';
+          }
+        }
+        
         const valor = parseFloat(cob.valor || 0).toFixed(2).replace('.', ',');
         
         mensagem += `*${index + 1}.* ${descricao}\n`;
@@ -1110,7 +1120,20 @@ Digite apenas os números do CPF (11 dígitos):`;
           ? new Date(dataVencimento).toLocaleDateString('pt-BR')
           : 'Data não informada';
         
-        menuData.choices.push(`R$ ${valorFormatado} - Venc: ${vencimento}|cobranca_${index}`);
+        // Tenta criar descrição curta para o botão usando referenciaMensalidade
+        let descricaoCurta = '';
+        const referenciaMensalidade = cob.referenciaMensalidade;
+        if (referenciaMensalidade) {
+          try {
+            const dataRef = new Date(referenciaMensalidade);
+            const mesAno = dataRef.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
+            descricaoCurta = ` - ${mesAno}`;
+          } catch (e) {
+            descricaoCurta = '';
+          }
+        }
+        
+        menuData.choices.push(`R$ ${valorFormatado}${descricaoCurta} - Venc: ${vencimento}|cobranca_${index}`);
       });
 
       menuData.choices.push('Voltar ao Menu|menu');
@@ -1564,4 +1587,5 @@ Digite *MENU* ou *OI* para ver as opções disponíveis.`;
     return await this.sendVoltarMenu(number);
   }
 }
+
 
