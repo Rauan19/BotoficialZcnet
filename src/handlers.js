@@ -1114,26 +1114,12 @@ Digite apenas os números do CPF (11 dígitos):`;
       const cobrancasParaMenu = cobrancasPendentes.slice(0, 3);
       cobrancasParaMenu.forEach((cob, index) => {
         const valorFormatado = parseFloat(cob.valor).toFixed(2).replace('.', ',');
-        // Pega data de vencimento para exibir na opção
         const dataVencimento = cob.dataVencimento || cob.data_vencimento || cob.vencimento;
         const vencimento = dataVencimento 
           ? new Date(dataVencimento).toLocaleDateString('pt-BR')
           : 'Data não informada';
         
-        // Tenta criar descrição curta para o botão usando referenciaMensalidade
-        let descricaoCurta = '';
-        const referenciaMensalidade = cob.referenciaMensalidade;
-        if (referenciaMensalidade) {
-          try {
-            const dataRef = new Date(referenciaMensalidade);
-            const mesAno = dataRef.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
-            descricaoCurta = ` - ${mesAno}`;
-          } catch (e) {
-            descricaoCurta = '';
-          }
-        }
-        
-        menuData.choices.push(`R$ ${valorFormatado}${descricaoCurta} - Venc: ${vencimento}|cobranca_${index}`);
+        menuData.choices.push(`R$ ${valorFormatado} - Venc: ${vencimento}|cobranca_${index}`);
       });
 
       menuData.choices.push('Voltar ao Menu|menu');
